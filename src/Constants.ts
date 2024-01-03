@@ -34,16 +34,14 @@ export const ShoukakuDefaults: Required<ShoukakuOptions> = {
     resume: false,
     resumeTimeout: 30,
     reconnectTries: 3,
+    resumeByLibrary: false,
     reconnectInterval: 5,
     restTimeout: 60,
     moveOnDisconnect: false,
     userAgent: `${Info.name}bot/${Info.version} (${Info.repository.url})`,
     structures: {},
     voiceConnectionTimeout: 15,
-    nodeResolver: (nodes) => [ ...nodes.values() ]
-        .filter(node => node.state === State.CONNECTED)
-        .sort((a, b) => a.penalties - b.penalties)
-        .shift()
+    nodeResolver: (nodes) => [ ...nodes.values() ].filter(node => node.state === State.CONNECTED).sort((a, b) => a.penalties - b.penalties).shift()
 };
 
 export const NodeDefaults: NodeOption = {

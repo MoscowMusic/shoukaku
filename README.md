@@ -1,8 +1,7 @@
 # Shoukaku
 
 ## A stable and updated wrapper around Lavalink
-> This is a modified version used in our application infrastructure.<br/><br/>Shoukaku: https://github.com/Deivu/Shoukaku<br/>
-> Ducumentation: https://deivu.github.io/Shoukaku/
+> This is a modified version used in our application infrastructure.<br/><br/>Shoukaku: https://github.com/shipgirlproject/Shoukaku<br/>
 
 <br/>
 

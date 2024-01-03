@@ -5,7 +5,7 @@ import { Connection } from './guild/Connection';
 import { Connector } from './connectors/Connector';
 import { Constructor, mergeDefault } from './Utils';
 import { Rest, UpdatePlayerOptions } from './node/Rest';
-import { State, ShoukakuDefaults, OpCodes } from './Constants';
+import { VoiceState, ShoukakuDefaults } from './Constants';
 
 export interface Structures {
     /**
@@ -42,6 +42,7 @@ export interface NodeOption {
 };
 
 export interface ShoukakuOptions {
+    // TODO: Improve options.
     /**
      * Whether to resume a connection on disconnect to Lavalink (Server Side) (Note: DOES NOT RESUME WHEN THE LAVALINK SERVER DIES)
      */
@@ -50,6 +51,10 @@ export interface ShoukakuOptions {
      * Time to wait before lavalink starts to destroy the players of the disconnected client
      */
     resumeTimeout?: number;
+    /**
+     * Whether to resume the players by doing it in the library side (Client Side) (Note: TRIES TO RESUME REGARDLESS OF WHAT HAPPENED ON A LAVALINK SERVER)
+     */
+    resumeByLibrary?: boolean;
     /**
      * Number of times to try and reconnect to Lavalink before giving up
      */
@@ -78,7 +83,11 @@ export interface ShoukakuOptions {
      * Timeout before abort connection
      */
     voiceConnectionTimeout?: number;
-};
+    /**
+     * Node Resolver to use if you want to customize it
+     */
+    nodeResolver?: (nodes: Map<string, Node>, connection?: Connection) => Node|undefined;
+}
 
 export interface VoiceChannelOptions {
     guildId: string;
@@ -86,21 +95,9 @@ export interface VoiceChannelOptions {
     channelId: string;
     deaf?: boolean;
     mute?: boolean;
-    getNode?: (node: Map<string, Node>, connection: Connection) => Node | undefined;
-};
+}
 
-export interface MergedShoukakuOptions {
-    resume: boolean;
-    resumeTimeout: number;
-    reconnectTries: number;
-    reconnectInterval: number;
-    restTimeout: number;
-    moveOnDisconnect: boolean;
-    userAgent: string;
-    structures: Structures;
-    voiceConnectionTimeout: number;
-};
-
+// TODO: Probably refactor.
 export interface PlayerDump {
     node: {
         name: string;
@@ -152,7 +149,7 @@ export declare interface Shoukaku {
      * Emitted when a websocket connection to Lavalink disconnects
      * @eventProperty
      */
-    on(event: 'disconnect', listener: (name: string, moved: boolean, count: number) => void): this;
+    on(event: 'disconnect', listener: (name: string, count: number) => void): this;
     /**
      * Emitted when a raw message is received from Lavalink
      * @eventProperty
@@ -163,14 +160,14 @@ export declare interface Shoukaku {
     once(event: 'error', listener: (name: string, error: Error) => void): this;
     once(event: 'ready', listener: (name: string, reconnected: number) => void): this;
     once(event: 'close', listener: (name: string, code: number, reason: string) => void): this;
-    once(event: 'disconnect', listener: (name: string, moved: boolean, count: number) => void): this;
+    once(event: 'disconnect', listener: (name: string, count: number) => void): this;
     once(event: 'raw', listener: (name: string, json: unknown) => void): this;
     off(event: 'reconnecting', listener: (name: string, reconnectsLeft: number, reconnectInterval: number) => void): this;
     off(event: 'debug', listener: (name: string, info: string) => void): this;
     off(event: 'error', listener: (name: string, error: Error) => void): this;
     off(event: 'ready', listener: (name: string, reconnected: number) => void): this;
     off(event: 'close', listener: (name: string, code: number, reason: string) => void): this;
-    off(event: 'disconnect', listener: (name: string, moved: boolean, count: number) => void): this;
+    off(event: 'disconnect', listener: (name: string, count: number) => void): this;
     off(event: 'raw', listener: (name: string, json: unknown) => void): this;
 };
 
@@ -185,7 +182,7 @@ export class Shoukaku extends EventEmitter {
     /**
      * Shoukaku options
      */
-    public readonly options: MergedShoukakuOptions;
+    public readonly options: Required<ShoukakuOptions>;
     /**
      * Connected Lavalink nodes
      */
@@ -194,14 +191,21 @@ export class Shoukaku extends EventEmitter {
      * Voice connections being handled
      */
     public readonly connections: Map<string, Connection>;
+
+    // TODO: Review.
     /**
-     * Player dumps from previous session, waiting for reconnect
+    * Player dumps from previous session, waiting for reconnect
      */
     public reconnectingPlayers: Map<String, PlayerDump>;
     /**
      * Array of nodes waiting for connection
      */
     public connectingNodes: NodeOption[];
+
+    /**
+     * Players being handled
+     */
+    public readonly players: Map<string, Player>;
     /**
      * Shoukaku instance identifier
      */
@@ -218,6 +222,7 @@ export class Shoukaku extends EventEmitter {
      * @param options.moveOnDisconnect Whether to move players to a different Lavalink node when a node disconnects
      * @param options.userAgent User Agent to use when making requests to Lavalink
      * @param options.structures Custom structures for shoukaku to use
+     * @param options.nodeResolver Used if you have custom lavalink node resolving
      */
     constructor(connector: Connector, nodes: NodeOption[], options: ShoukakuOptions = {}, dumps?: [String, PlayerDump][]) {
         super();
@@ -225,115 +230,103 @@ export class Shoukaku extends EventEmitter {
         this.options = mergeDefault(ShoukakuDefaults, options);
         this.nodes = new Map();
         this.connections = new Map();
+        this.players = new Map();
         this.id = null;
         this.connector.listen(nodes);
         this.reconnectingPlayers = new Map<String, PlayerDump>(dumps);
         this.connectingNodes = [];
     };
 
-    /**
-     * Get a list of players
-     * @returns A map of guild IDs and players
-     * @readonly
-     */
-    get players(): Map<string, Player> {
-        const players = new Map();
-        for (const node of this.nodes.values()) {
-            for (const [id, player] of node.players) players.set(id, player);
-        };
-
-        return players;
-    };
-
+    // TODO: Review.
     /**
      * Get dumped players data that you will need in case of a restart
      * @returns A map of guild IDs and PlayerDump
      * @readonly
      */
-    get playersDump(): Map<string, PlayerDump> {
-        try {
-            const players = new Map() as Map<string, PlayerDump>;
+    // get playersDump(): Map<string, PlayerDump> {
+    //     try {
+    //         const players = new Map() as Map<string, PlayerDump>;
 
-            for (const node of this.nodes.values()) {
-                for (const [id, player] of node.players) {
-                    if (!player.connection.serverUpdate?.token || !player.connection.serverUpdate?.endpoint) continue;
+    //         for (const node of this.nodes.values()) {
+    //             for (const [id, player] of node.players) {
+    //                 if (!player.connection.serverUpdate?.token || !player.connection.serverUpdate?.endpoint) continue;
 
-                    players.set(id, {
-                        node: {
-                            name: player.node.name,
-                            group: player.node.group,
-                            sessionId: player.node.sessionId!
-                        },
-                        options: {
-                            guildId: player.connection.guildId,
-                            shardId: player.connection.shardId,
-                            channelId: player.connection.channelId!,
-                            deaf: player.connection.deafened,
-                            mute: player.connection.muted
-                        },
-                        player: player.playerData.playerOptions,
-                        timestamp: Date.now()
-                    });
-                };
-            };
+    //                 players.set(id, {
+    //                     node: {
+    //                         name: player.node.name,
+    //                         group: player.node.group,
+    //                         sessionId: player.node.sessionId!
+    //                     },
+    //                     options: {
+    //                         guildId: player.connection.guildId,
+    //                         shardId: player.connection.shardId,
+    //                         channelId: player.connection.channelId!,
+    //                         deaf: player.connection.deafened,
+    //                         mute: player.connection.muted
+    //                     },
+    //                     player: player.playerData.playerOptions,
+    //                     timestamp: Date.now()
+    //                 });
+    //             };
+    //         };
 
-            return players;
-        } catch (error) { throw error };
-    };
+    //         return players;
+    //     } catch (error) { throw error };
+    // };
 
     /**
      * Restore players from previous session
      * @param players playersDump from saved session
      * @throws {Error} Will throw catched error if something went wrong
      */
-    async restorePlayers(node: Node): Promise<void> {
-        try {
-            const playerDumps = [...this.reconnectingPlayers.values()].filter((player: PlayerDump) => player.node.name === node.name || player.node.group === node.group);
+    // async restorePlayers(node: Node): Promise<void> {
+    //     try {
+    //         const playerDumps = [...this.reconnectingPlayers.values()].filter((player: PlayerDump) => player.node.name === node.name || player.node.group === node.group);
 
-            if (!playerDumps || playerDumps.length === 0) node.emit('debug', `[${node.name}] <- [Player] : Restore canceled due to missing data`);
+    //         if (!playerDumps || playerDumps.length === 0) node.emit('debug', `[${node.name}] <- [Player] : Restore canceled due to missing data`);
 
-            for (const dump of playerDumps) {
-                if (dump.timestamp + (this.options.reconnectInterval * 1000) < Date.now() || this.connectingNodes.filter(n => n?.group === node?.group).length === 0 || node.state !== State.CONNECTED) {
-                    node.emit('debug', `[${node.name}] <- [Player/${dump.options.guildId}] : Couldn't restore player because session is expired or there are no suitable nodes available`);
+    //         for (const dump of playerDumps) {
+    //             if (dump.timestamp + (this.options.reconnectInterval * 1000) < Date.now() || this.connectingNodes.filter(n => n?.group === node?.group).length === 0 || node.state !== State.CONNECTED) {
+    //                 node.emit('debug', `[${node.name}] <- [Player/${dump.options.guildId}] : Couldn't restore player because session is expired or there are no suitable nodes available`);
 
-                    node.emit('raw', { op: OpCodes.PLAYER_RESTORE, state: { restored: false }, guildId: dump.options.guildId });
-                    node.emit('restore', { op: OpCodes.PLAYER_RESTORE, state: { restored: false }, guildId: dump.options.guildId });
-                    continue;
-                };
+    //                 node.emit('raw', { op: OpCodes.PLAYER_RESTORE, state: { restored: false }, guildId: dump.options.guildId });
+    //                 node.emit('restore', { op: OpCodes.PLAYER_RESTORE, state: { restored: false }, guildId: dump.options.guildId });
+    //                 continue;
+    //             };
 
-                const player = await this.joinVoiceChannel({
-                    guildId: dump.options.guildId,
-                    shardId: dump.options.shardId,
-                    channelId: dump.options.channelId,
-                    deaf: dump.options.deaf ?? false,
-                    mute: dump.options.mute ?? false,
-                    getNode: () => { return node }
-                });
+    //             const player = await this.joinVoiceChannel({
+    //                 guildId: dump.options.guildId,
+    //                 shardId: dump.options.shardId,
+    //                 channelId: dump.options.channelId,
+    //                 deaf: dump.options.deaf ?? false,
+    //                 mute: dump.options.mute ?? false,
+    //                 getNode: () => { return node }
+    //             });
 
-                dump.player.voice = { token: player.connection.serverUpdate!.token, endpoint: player.connection.serverUpdate!.endpoint, sessionId: player.connection.sessionId as string };
+    //             dump.player.voice = { token: player.connection.serverUpdate!.token, endpoint: player.connection.serverUpdate!.endpoint, sessionId: player.connection.sessionId as string };
 
-                player.connection.setStateUpdate({
-                    channel_id: dump.options.channelId,
-                    session_id: dump.player.voice?.sessionId,
-                    self_deaf: dump.options.deaf ?? false,
-                    self_mute: dump.options.mute ?? false
-                });
+    //             player.connection.setStateUpdate({
+    //                 channel_id: dump.options.channelId,
+    //                 session_id: dump.player.voice?.sessionId,
+    //                 self_deaf: dump.options.deaf ?? false,
+    //                 self_mute: dump.options.mute ?? false
+    //             });
 
-                player.connection.setServerUpdate({
-                    token: dump.player.voice!.token,
-                    endpoint: dump.player.voice!.endpoint,
-                    guild_id: dump.options.guildId
-                });
+    //             player.connection.setServerUpdate({
+    //                 token: dump.player.voice!.token,
+    //                 endpoint: dump.player.voice!.endpoint,
+    //                 guild_id: dump.options.guildId
+    //             });
 
-                await player.update({ guildId: dump.options.guildId, playerOptions: dump.player });
-                node.emit('debug', `[${node.name}] <- [Player] : Restored session "${dump.options.guildId}"`);
+    //             await player.update({ guildId: dump.options.guildId, playerOptions: dump.player });
+    //             node.emit('debug', `[${node.name}] <- [Player] : Restored session "${dump.options.guildId}"`);
 
-                dump.state = { restored: true, node: node.name };
-                node.emit('raw', { op: OpCodes.PLAYER_RESTORE, state: dump.state, guildId: dump.options.guildId });
-                node.emit('restore', { op: OpCodes.PLAYER_RESTORE, state: dump.state, guildId: dump.options.guildId });
-            };
-        } catch (error) { throw error };
-    };
+    //             dump.state = { restored: true, node: node.name };
+    //             node.emit('raw', { op: OpCodes.PLAYER_RESTORE, state: dump.state, guildId: dump.options.guildId });
+    //             node.emit('restore', { op: OpCodes.PLAYER_RESTORE, state: dump.state, guildId: dump.options.guildId });
+    //         };
+    //     } catch (error) { throw error };
+    // };
 
     /**
      * Add a Lavalink node to the pool of available nodes
@@ -375,14 +368,11 @@ export class Shoukaku extends EventEmitter {
      * @param options.channelId ChannelId of the voice channel you want to connect to
      * @param options.deaf Optional boolean value to specify whether to deafen or undeafen the current bot user
      * @param options.mute Optional boolean value to specify whether to mute or unmute the current bot user
-     * @param options.getNode Optional getter function if you have custom node resolving
      * @returns The created player
      * @internal
      */
     public async joinVoiceChannel(options: VoiceChannelOptions): Promise<Player> {
         if (this.connections.has(options.guildId)) throw new Error('This guild already have an existing connection');
-        if (!options.getNode) options.getNode = this.getIdealNode.bind(this);
-
         const connection = new Connection(this, options);
         this.connections.set(connection.guildId, connection);
 
@@ -394,23 +384,21 @@ export class Shoukaku extends EventEmitter {
         };
 
         try {
-            const node = options.getNode(this.nodes, connection);
-            if (!node) throw new Error('Can\'t find any nodes to connect on');
-
-            const player = this.options.structures.player ? new this.options.structures.player(node, connection) : new Player(node, connection);
-            node.players.set(player.guildId, player);
-
-            try {
-                await player.sendServerUpdate();
-            } catch (error) {
-                node.players.delete(options.guildId);
-                throw error;
+            const node = this.options.nodeResolver(this.nodes, connection);
+            if (!node)
+                throw new Error('Can\'t find any nodes to connect on');
+            const player = this.options.structures.player ? new this.options.structures.player(connection.guildId, node) : new Player(connection.guildId, node);
+            const onUpdate = (state: VoiceState) => {
+                if (state !== VoiceState.SESSION_READY) return;
+                player.sendServerUpdate(connection);
             };
-
-            connection.established = true;
+            await player.sendServerUpdate(connection);
+            connection.on('connectionUpdate', onUpdate);
+            this.players.set(player.guildId, player);
             return player;
         } catch (error) {
             connection.disconnect();
+            this.connections.delete(options.guildId);
             throw error;
         };
     };
@@ -421,24 +409,21 @@ export class Shoukaku extends EventEmitter {
      * @returns The destroyed / disconnected player or undefined if none
      * @internal
      */
-    public async leaveVoiceChannel(guildId: string): Promise<Player | undefined> {
+    public async leaveVoiceChannel(guildId: string): Promise<void> {
         const connection = this.connections.get(guildId);
-        if (connection) connection.disconnect();
+        if (connection) {
+            connection.disconnect();
+            this.connections.delete(guildId);
+        }
         const player = this.players.get(guildId);
-        if (player) await player.destroyPlayer(true);
-        return player;
-    };
-
-    /**
-     * Gets the Lavalink node the least penalty score
-     * @returns A Lavalink node or undefined if there are no nodes ready
-     */
-    public getIdealNode(): Node | undefined {
-        return [...this.nodes.values()]
-            .filter(node => node.state === State.CONNECTED)
-            .sort((a, b) => a.penalties - b.penalties)
-            .shift();
-    };
+        if (player) {
+            try {
+                await player.destroy();
+            } catch (_) {}
+            player.clean();
+            this.players.delete(guildId);
+        }
+    }
 
     /**
      * Cleans the disconnected lavalink node

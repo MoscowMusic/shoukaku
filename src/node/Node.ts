@@ -4,8 +4,8 @@ import { wait } from '../Utils';
 import { EventEmitter } from 'events';
 import { IncomingMessage } from 'http';
 import { Player } from '../guild/Player';
-import { NodeOption, PlayerDump, Shoukaku } from '../Shoukaku';
 import { OpCodes, State, Versions } from '../Constants';
+import { NodeOption, PlayerDump, Shoukaku } from '../Shoukaku';
 
 export interface NodeStats {
     players: number;
@@ -80,10 +80,6 @@ export class Node extends EventEmitter {
      */
     public readonly manager: Shoukaku;
     /**
-     * A map of guild ID to players
-     */
-    public readonly players: Map<string, Player>;
-    /**
      * Lavalink rest API
      */
     public readonly rest: Rest;
@@ -151,7 +147,6 @@ export class Node extends EventEmitter {
     constructor(manager: Shoukaku, options: NodeOption) {
         super();
         this.manager = manager;
-        this.players = new Map();
         this.rest = new (this.manager.options.structures.rest || Rest)(this, options);
         this.name = options.name;
         this.group = options.group;
@@ -270,6 +265,17 @@ export class Node extends EventEmitter {
             case OpCodes.READY:
                 this.sessionId = json.sessionId;
 
+                // TODO: Remove or refactor.
+                const players = [ ...this.manager.players.values() ].filter(player => player.node.name === this.name);
+                const resumeByLibrary = this.initialized && (players.length && this.manager.options.resumeByLibrary);
+                if (!json.resumed && resumeByLibrary) {
+                    try {
+                        await this.resumePlayers();
+                    } catch (error) {
+                        this.error(error);
+                    }
+                }
+
                 this.state = State.CONNECTED;
                 this.emit('debug', `[Socket] -> [${this.name}] : Lavalink is ready! | Lavalink resume: ${json.resumed}`);
 
@@ -277,11 +283,11 @@ export class Node extends EventEmitter {
                     await this.rest.updateSession(this.manager.options.resume, this.manager.options.resumeTimeout);
                     this.emit('debug', `[Socket] -> [${this.name}] : Resuming configured!`);
 
-                    if (this.manager.reconnectingPlayers) {
-                        this.emit('debug', `[${this.name}] -> [Player] : Trying to re-create players from the last session`);
-                        await this.manager.restorePlayers(this);
-                        this.emit('debug', `[${this.name}] <-> [Player]: Session restore completed`);
-                    };
+                    // if (this.manager.reconnectingPlayers) {
+                    //     this.emit('debug', `[${this.name}] -> [Player] : Trying to re-create players from the last session`);
+                    //     await this.manager./restorePlayers(this);
+                    //     this.emit('debug', `[${this.name}] <-> [Player]: Session restore completed`);
+                    // };
                 };
 
                 this.manager.connectingNodes.splice(this.manager.connectingNodes.indexOf(this.manager.connectingNodes.find(e => e.name === this.name)!), 1);
@@ -292,7 +298,7 @@ export class Node extends EventEmitter {
                 break;
             case OpCodes.EVENT:
             case OpCodes.PLAYER_UPDATE:
-                const player = this.players.get(json.guildId);
+                const player = this.manager.players.get(json.guildId);
                 if (!player) return;
                 if (json.op === OpCodes.EVENT)
                     player.onPlayerEvent(json);
@@ -314,7 +320,7 @@ export class Node extends EventEmitter {
         this.emit('close', code, reason);
 
         if (this.shouldClean) {
-            this.manager.restorePlayers(this);
+            // this.manager.restorePlayers(this);
             this.clean();
         } else this.reconnect();
     };
@@ -331,36 +337,35 @@ export class Node extends EventEmitter {
      * Destroys the websocket connection
      * @internal
      */
-    private destroy(move: boolean, count: number = 0): void {
+    private destroy(count: number = 0): void {
         this.ws?.removeAllListeners();
         this.ws?.close();
         this.ws = null;
         this.state = State.DISCONNECTED;
         if (!this.shouldClean) return;
         this.destroyed = true;
-        this.emit('disconnect', move, count);
-    };
+        this.emit('disconnect', count);
+    }
 
     /**
      * Cleans and moves players to other nodes if possible
      * @internal
      */
     private async clean(): Promise<void> {
-        this.manager.connectingNodes.splice(this.manager.connectingNodes.indexOf(this.manager.connectingNodes.find(e => e.name === this.name)!), 1);
+        // TODO: understand what to do with this shit
+        // this.manager.connectingNodes.splice(this.manager.connectingNodes.indexOf(this.manager.connectingNodes.find(e => e.name === this.name)!), 1);
 
-        let move = this.manager.options.moveOnDisconnect;
-        if (!move) return this.destroy(false);
-        let count;
-
+        const move = this.manager.options.moveOnDisconnect;
+        if (!move) return this.destroy();
+        let count = 0;
         try {
             count = await this.movePlayers();
-            move = count > 0;
         } catch (error) {
             this.error(error);
         } finally {
-            this.destroy(move, count);
-        };
-    };
+            this.destroy(count);
+        }
+    }
 
     /**
      * Reconnect to Lavalink
@@ -368,21 +373,44 @@ export class Node extends EventEmitter {
      */
     private async reconnect(): Promise<void> {
         if (this.state === State.RECONNECTING) return;
-        if (this.state !== State.DISCONNECTED) this.destroy(false);
+        if (this.state !== State.DISCONNECTED) this.destroy();
         this.state = State.RECONNECTING;
         this.reconnects++;
         this.emit('reconnecting', this.manager.options.reconnectTries - this.reconnects, this.manager.options.reconnectInterval);
         this.emit('debug', `[Socket] -> [${this.name}] : Reconnecting in ${this.manager.options.reconnectInterval} seconds. ${this.manager.options.reconnectTries - this.reconnects} tries left`);
         await wait(this.manager.options.reconnectInterval * 1000);
         this.connect();
-    };
+    }
+
+    // TODO: Remove or remake this shit
+    /**
+     * Tries to resume the players internally
+     * @internal
+     */
+    private async resumePlayers(): Promise<void> {
+        const playersWithData = [];
+        const playersWithoutData = [];
+
+        for (const player of this.manager.players.values()) {
+            const serverUpdate = this.manager.connections.get(player.guildId)?.serverUpdate;
+            if (serverUpdate)
+                playersWithData.push(player);
+            else
+                playersWithoutData.push(player);
+        }
+
+        await Promise.allSettled([
+            ...playersWithData.map(player => player.resume()),
+            ...playersWithoutData.map(player => this.manager.leaveVoiceChannel(player.guildId))
+        ]);
+    }
 
     /**
      * Tries to move the players to another node
      * @internal
      */
     private async movePlayers(): Promise<number> {
-        const players = [...this.players.values()];
+        const players = [ ...this.manager.players.values() ];
         const data = await Promise.allSettled(players.map(player => player.move()));
         return data.filter(results => results.status === 'fulfilled').length;
     };

@@ -1,11 +1,10 @@
 import Websocket from 'ws';
-import { Rest } from './Rest';
-import { wait } from '../Utils';
-import { EventEmitter } from 'events';
-import { IncomingMessage } from 'http';
-import { Player } from '../guild/Player';
-import { OpCodes, State, Versions } from '../Constants';
-import { NodeOption, PlayerDump, Shoukaku } from '../Shoukaku';
+import {Rest} from './Rest';
+import {wait} from '../Utils';
+import {EventEmitter} from 'events';
+import {IncomingMessage} from 'http';
+import {NodeOption, Shoukaku} from '../Shoukaku';
+import {OpCodes, State, Versions} from '../Constants';
 
 export interface NodeStats {
     players: number;
@@ -27,7 +26,7 @@ export interface NodeStats {
         lavalinkLoad: number;
     };
     uptime: number;
-};
+}
 
 type NodeInfoVersion = {
     semver: string;
@@ -62,14 +61,16 @@ export type NodeInfo = {
 
 export interface ResumableHeaders {
     [key: string]: string;
+
     'Client-Name': string;
     'User-Agent': string;
     'Authorization': string;
     'User-Id': string;
     'Session-Id': string;
-};
+}
 
-export interface NonResumableHeaders extends Omit<ResumableHeaders, 'Session-Id'> { };
+export interface NonResumableHeaders extends Omit<ResumableHeaders, 'Session-Id'> {
+}
 
 /**
  * Represents a Lavalink node
@@ -117,7 +118,7 @@ export class Node extends EventEmitter {
     public stats: NodeStats | null;
     /**
      * Information about lavalink node
-    */
+     */
     public info: NodeInfo | null;
     /**
      * Websocket instance
@@ -135,12 +136,13 @@ export class Node extends EventEmitter {
      * Boolean that represents if this connection is destroyed
      */
     protected destroyed: boolean;
+
     /**
      * @param manager Shoukaku instance
      * @param options Options on creating this node
      * @param options.name Name of this node
      * @param options.url URL of Lavalink
-     * @param options.auth Credentials to access Lavalnk
+     * @param options.auth Credentials to access Lavalink
      * @param options.secure Whether to use secure protocols or not
      * @param options.group Group of this node
      */
@@ -177,7 +179,7 @@ export class Node extends EventEmitter {
         if (this.stats.frameStats) {
             penalties += this.stats.frameStats.deficit;
             penalties += this.stats.frameStats.nulled * 2;
-        };
+        }
 
         return penalties;
     };
@@ -186,7 +188,9 @@ export class Node extends EventEmitter {
      * If we should clean this node
      * @internal @readonly
      */
-    private get shouldClean(): boolean { return this.destroyed || this.reconnects + 1 >= this.manager.options.reconnectTries };
+    private get shouldClean(): boolean {
+        return this.destroyed || this.reconnects + 1 >= this.manager.options.reconnectTries
+    };
 
     /**
      * Connect to Lavalink
@@ -204,14 +208,14 @@ export class Node extends EventEmitter {
             'User-Id': this.manager.id
         };
 
-        const sessionId = [...this.manager.reconnectingPlayers.values()].find((player: PlayerDump) => player.node.name === this.name)?.node.sessionId;
+        const session = [...this.manager.dumps].find(dump => dump.node.name === this.name)?.node.sessionId;
+        if (this.manager.options.resume && session) headers['Session-Id'] = session;
 
-        if (sessionId) headers['Session-Id'] = sessionId;
-        this.emit('debug', `[Socket] -> [${this.name}] : Connecting ${this.url}, Version: ${this.version}, Trying to resume? ${!!sessionId}`);
+        this.emit('debug', `[Socket] -> [${this.name}] : Connecting ${this.url}, Version: ${this.version}, Trying to resume? ${this.manager.options.resume}`);
         if (!this.initialized) this.initialized = true;
 
         const url = new URL(`${this.url}${this.version}/websocket`);
-        this.ws = new Websocket(url.toString(), { headers } as Websocket.ClientOptions);
+        this.ws = new Websocket(url.toString(), {headers} as Websocket.ClientOptions);
         this.ws.once('upgrade', response => this.open(response));
         this.ws.once('close', (...args) => this.close(...args));
         this.ws.on('error', error => this.error(error));
@@ -265,35 +269,17 @@ export class Node extends EventEmitter {
             case OpCodes.READY:
                 this.sessionId = json.sessionId;
 
-                // TODO: Remove or refactor.
-                const players = [ ...this.manager.players.values() ].filter(player => player.node.name === this.name);
-                const resumeByLibrary = this.initialized && (players.length && this.manager.options.resumeByLibrary);
-                if (!json.resumed && resumeByLibrary) {
-                    try {
-                        await this.resumePlayers();
-                    } catch (error) {
-                        this.error(error);
-                    }
-                }
-
                 this.state = State.CONNECTED;
-                this.emit('debug', `[Socket] -> [${this.name}] : Lavalink is ready! | Lavalink resume: ${json.resumed}`);
+                this.emit('debug', `[Socket] -> [${this.name}] : Lavalink is ready! | Lavalink resume: ${json["resumed"]}`);
 
                 if (this.manager.options.resume) {
                     await this.rest.updateSession(this.manager.options.resume, this.manager.options.resumeTimeout);
                     this.emit('debug', `[Socket] -> [${this.name}] : Resuming configured!`);
 
-                    // if (this.manager.reconnectingPlayers) {
-                    //     this.emit('debug', `[${this.name}] -> [Player] : Trying to re-create players from the last session`);
-                    //     await this.manager./restorePlayers(this);
-                    //     this.emit('debug', `[${this.name}] <-> [Player]: Session restore completed`);
-                    // };
-                };
+                    await this.restorePlayers();
+                }
 
-                this.manager.connectingNodes.splice(this.manager.connectingNodes.indexOf(this.manager.connectingNodes.find(e => e.name === this.name)!), 1);
-
-                this.emit('ready', [...this.manager.reconnectingPlayers.values()].filter(player => player.state?.node === this.name && player.state.restored)?.length ?? 0);
-                [...this.manager.reconnectingPlayers.values()]?.filter(player => player.state?.node === this.name).forEach(dump => this.manager.reconnectingPlayers.delete(dump.options.guildId));
+                this.emit('ready', this.manager.dumps.filter(player => player.node.name === this.name && player.options.restored)?.length ?? 0);
 
                 break;
             case OpCodes.EVENT:
@@ -307,7 +293,7 @@ export class Node extends EventEmitter {
                 break;
             default:
                 this.emit('debug', `[Player] -> [Node] : Unknown Message OP ${json.op}`);
-        };
+        }
     };
 
     /**
@@ -382,27 +368,52 @@ export class Node extends EventEmitter {
         this.connect();
     }
 
-    // TODO: Remove or remake this shit
     /**
-     * Tries to resume the players internally
+     * Tries to restore players from the dump
      * @internal
      */
-    private async resumePlayers(): Promise<void> {
-        const playersWithData = [];
-        const playersWithoutData = [];
+    private async restorePlayers(): Promise<void> {
+        this.emit('debug', `[Socket] -> [${this.name}] : Trying to re-create players from the last session`);
+        if (this.manager.dumps.length === 0) this.emit('debug', `[Socket] <- [${this.name}] : Restore canceled due to missing data`);
 
-        for (const player of this.manager.players.values()) {
-            const serverUpdate = this.manager.connections.get(player.guildId)?.serverUpdate;
-            if (serverUpdate)
-                playersWithData.push(player);
-            else
-                playersWithoutData.push(player);
+        for (const dump of this.manager.dumps) {
+            try {
+                const node = [...this.manager.nodes.values()].find(node => dump.node.name === node.name || dump.node.group === node.group);
+
+                if (node && node.name !== this.name) continue;
+                if (dump.options.timestamp + this.manager.options.resumeTimeout * 1000 < Date.now() || !node) throw "Can't restore";
+
+                const player = await this.manager.joinVoiceChannel({
+                    guildId: dump.options.guildId,
+                    shardId: dump.options.shardId,
+                    channelId: dump.options.channelId,
+                    node: node
+                });
+
+                // use voice data from created player, old state will not work.
+                dump.player.playerOptions.voice = player.data.playerOptions.voice;
+
+                // current time calculation (approximate, the real value depends on playerUpdateInterval, which we can't get from /info endpoint).
+                if (!dump.player.playerOptions.paused) dump.player.playerOptions.position = (dump.player.playerOptions.position ?? 0) + (Date.now() - dump.options.timestamp);
+
+                await player.update(dump.player);
+
+                this.emit('debug', `[Socket] <- [${this.name}/player/${dump.options.guildId}] : Successfully restored session`);
+
+                this.emit('raw', {op: OpCodes.PLAYER_RESTORE, dump: dump});
+                this.emit('restore', {op: OpCodes.PLAYER_RESTORE, dump: dump});
+
+                dump.options.restored = true;
+            } catch (error) {
+                this.emit('debug', error)
+                this.emit('debug', `[Socket] <- [${this.name}/players/${dump.options.guildId}] : Couldn't restore player because session is expired or there are no suitable nodes available`);
+
+                this.emit('raw', {op: OpCodes.PLAYER_RESTORE, dump: dump});
+                this.emit('restore', {op: OpCodes.PLAYER_RESTORE, dump: dump});
+            }
         }
 
-        await Promise.allSettled([
-            ...playersWithData.map(player => player.resume()),
-            ...playersWithoutData.map(player => this.manager.leaveVoiceChannel(player.guildId))
-        ]);
+        this.emit('debug', `[Socket] <-> [${this.name}]: Session restore completed`);
     }
 
     /**
@@ -410,8 +421,8 @@ export class Node extends EventEmitter {
      * @internal
      */
     private async movePlayers(): Promise<number> {
-        const players = [ ...this.manager.players.values() ];
+        const players = [...this.manager.players.values()];
         const data = await Promise.allSettled(players.map(player => player.move()));
         return data.filter(results => results.status === 'fulfilled').length;
     };
-};
+}

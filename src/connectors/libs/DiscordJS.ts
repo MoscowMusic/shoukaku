@@ -17,4 +17,4 @@ export class DiscordJS extends Connector {
         // Attach to the raw websocket event, this event must be 1:1 on spec with dapi (most libs implement this)
         this.client.on('raw', (packet: any) => this.raw(packet));
     };
-};
+}

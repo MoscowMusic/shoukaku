@@ -1,5 +1,5 @@
-import { NodeOption } from '../Shoukaku';
 import { Versions } from '../Constants';
+import { NodeOption } from '../Shoukaku';
 import { FilterOptions } from '../guild/Player';
 import { Node, NodeInfo, NodeStats } from './Node';
 
@@ -11,28 +11,28 @@ export enum LoadType {
     SEARCH = 'search',
     EMPTY = 'empty',
     ERROR = 'error'
-};
+}
 
 export interface Track {
     encoded: string;
     info: TrackInfo;
     pluginInfo: unknown;
-};
+}
 
 export interface TrackInfo {
     identifier: string;
     isSeekable: boolean;
     author: string;
-    duration: number;
+    length: number;
     isStream: boolean;
     position: number;
     title: string;
-    uri?: string;
-    sourceName?: string;
+    uri: string;
+    sourceName: string;
     artworkUrl?: string;
     isTrackUnavailable?: string;
     isrc?: string;
-};
+}
 
 export interface Playlist {
     encoded: string;
@@ -42,38 +42,38 @@ export interface Playlist {
     };
     pluginInfo: unknown;
     tracks: Track[];
-};
+}
 
 export interface Exception {
     message: string;
     severity: Severity;
     cause: string;
-};
+}
 
 export interface TrackResult {
     loadType: LoadType.TRACK,
     data: Track
-};
+}
 
 export interface PlaylistResult {
     loadType: LoadType.PLAYLIST,
     data: Playlist
-};
+}
 
 export interface SearchResult {
     loadType: LoadType.SEARCH,
     data: Track[]
-};
+}
 
 export interface EmptyResult {
     loadType: LoadType.EMPTY,
     data: {}
-};
+}
 
 export interface ErrorResult {
     loadType: LoadType.ERROR,
     data: Exception
-};
+}
 
 export type LavalinkResponse = TrackResult | PlaylistResult | SearchResult | EmptyResult | ErrorResult;
 
@@ -81,7 +81,7 @@ export interface Address {
     address: string;
     failingTimestamp: number;
     failingTime: string;
-};
+}
 
 export interface RoutePlanner {
     class: null | 'RotatingIpRoutePlanner' | 'NanoIpRoutePlanner' | 'RotatingNanoIpRoutePlanner' | 'BalancingIpRoutePlanner';
@@ -97,7 +97,7 @@ export interface RoutePlanner {
         blockIndex: string;
         currentAddressIndex: string;
     };
-};
+}
 
 export interface LavalinkPlayerVoice {
     token: string;
@@ -105,7 +105,7 @@ export interface LavalinkPlayerVoice {
     sessionId: string;
     connected?: boolean;
     ping?: number
-};
+}
 
 export interface LavalinkPlayerVoiceOptions extends Omit<LavalinkPlayerVoice, 'connected' | 'ping'> { };
 
@@ -116,7 +116,7 @@ export interface LavalinkPlayer {
     paused: boolean;
     voice: LavalinkPlayerVoice
     filters: FilterOptions
-};
+}
 
 export interface UpdatePlayerOptions {
     encodedTrack?: string | null;
@@ -128,18 +128,18 @@ export interface UpdatePlayerOptions {
     paused?: boolean;
     filters?: FilterOptions;
     voice?: LavalinkPlayerVoiceOptions;
-};
+}
 
 export interface UpdatePlayerInfo {
     guildId: string;
     playerOptions: UpdatePlayerOptions;
     noReplace?: boolean;
-};
+}
 
 export interface SessionInfo {
     resumingKey?: string;
     timeout: number;
-};
+}
 
 interface FetchOptions {
     endpoint: string;
@@ -150,14 +150,14 @@ interface FetchOptions {
         body?: Record<string, unknown>;
         [key: string]: unknown;
     };
-};
+}
 
 interface FinalFetchOptions {
     method: string;
     headers: Record<string, string>;
     signal: AbortSignal;
     body?: string;
-};
+}
 
 /**
  * Wrapper around Lavalink REST API
@@ -405,10 +405,10 @@ export class Rest {
                 throw new Error(`Rest request failed with response code: ${request.status}`);
             else
                 throw new Error(`Rest request failed with response code: ${request.status} | message: ${response.message}`);
-        };
+        }
 
         try {
             return await request.json() as T;
-        } catch { };
+        } catch { }
     };
-};
+}

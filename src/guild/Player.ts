@@ -1,11 +1,35 @@
-import { EventEmitter } from 'events';
-import { Node } from '../node/Node';
-import { Connection } from './Connection';
-import { OpCodes, State, ShoukakuDefaults } from '../Constants';
-import { Exception, Track, TrackInfo, UpdatePlayerInfo, UpdatePlayerOptions } from '../node/Rest';
+import {Node} from '../node/Node';
+import {EventEmitter} from 'events';
+import {Connection} from './Connection';
+import {OpCodes, State, ShoukakuDefaults} from '../Constants';
+import {Exception, Track, TrackInfo, UpdatePlayerInfo, UpdatePlayerOptions} from '../node/Rest';
+
+/**
+ * Player dump interface for future recovery.
+ */
+export interface PlayerDump {
+    node: {
+        name: string;
+        group?: string;
+        sessionId: string;
+    };
+    options: {
+        guildId: string;
+        shardId: number;
+        channelId: string;
+        timestamp: number;
+        restored: boolean;
+    };
+    player: UpdatePlayerInfo;
+}
 
 export type TrackEndReason = 'finished' | 'loadFailed' | 'stopped' | 'replaced' | 'cleanup';
-export type PlayerEventType = 'TrackStartEvent' | 'TrackEndEvent' | 'TrackExceptionEvent' | 'TrackStuckEvent' | 'WebSocketClosedEvent';
+export type PlayerEventType =
+    'TrackStartEvent'
+    | 'TrackEndEvent'
+    | 'TrackExceptionEvent'
+    | 'TrackStuckEvent'
+    | 'WebSocketClosedEvent';
 
 /**
  * Options when playing a new track
@@ -20,41 +44,41 @@ export interface PlayOptions {
         volume?: number;
     },
     info: TrackInfo;
-};
+}
 
 export interface ResumeOptions {
     noReplace?: boolean;
     pause?: boolean;
     startTime?: number;
     endTime?: number;
-};
+}
 
 export interface Band {
     band: number;
     gain: number;
-};
+}
 
 export interface KaraokeSettings {
     level?: number;
     monoLevel?: number;
     filterBand?: number;
     filterWidth?: number;
-};
+}
 
 export interface TimescaleSettings {
     speed?: number;
     pitch?: number;
     rate?: number;
-};
+}
 
 export interface FreqSettings {
     frequency?: number;
     depth?: number;
-};
+}
 
 export interface RotationSettings {
     rotationHz?: number;
-};
+}
 
 export interface DistortionSettings {
     sinOffset?: number;
@@ -65,58 +89,58 @@ export interface DistortionSettings {
     tanScale?: number;
     offset?: number;
     scale?: number;
-};
+}
 
 export interface ChannelMixSettings {
     leftToLeft?: number;
     leftToRight?: number;
     rightToLeft?: number;
     rightToRight?: number;
-};
+}
 
 export interface LowPassSettings {
     smoothing?: number
-};
+}
 
 export interface PlayerEvent {
     op: OpCodes.EVENT;
     type: PlayerEventType;
     guildId: string;
-};
+}
 
 export interface TrackStartEvent extends PlayerEvent {
     type: 'TrackStartEvent';
     track: Track;
-};
+}
 
 export interface TrackEndEvent extends PlayerEvent {
     type: 'TrackEndEvent';
     track: Track;
     reason: TrackEndReason;
-};
+}
 
 export interface TrackStuckEvent extends PlayerEvent {
     type: 'TrackStuckEvent';
     track: Track;
     thresholdMs: number;
-};
+}
 
 export interface TrackExceptionEvent extends PlayerEvent {
     type: 'TrackExceptionEvent';
     exception: Exception;
-};
+}
 
 export interface TrackStuckEvent extends PlayerEvent {
     type: 'TrackStuckEvent';
     thresholdMs: number;
-};
+}
 
 export interface WebSocketClosedEvent extends PlayerEvent {
     type: 'WebSocketClosedEvent';
     code: number;
     byRemote: boolean;
     reason: string;
-};
+}
 
 export interface PlayerUpdate {
     op: OpCodes.PLAYER_UPDATE;
@@ -126,16 +150,12 @@ export interface PlayerUpdate {
         time: number;
     };
     guildId: string;
-};
+}
 
 export interface PlayerRestore {
     op: OpCodes.PLAYER_RESTORE;
-    state: {
-        restored: boolean;
-        node: string;
-    };
-    guildId: string;
-};
+    dump: PlayerDump;
+}
 
 export interface FilterOptions {
     volume?: number;
@@ -148,7 +168,7 @@ export interface FilterOptions {
     distortion?: DistortionSettings | null;
     channelMix?: ChannelMixSettings | null;
     lowPass?: LowPassSettings | null;
-};
+}
 
 export declare interface Player {
     /**
@@ -156,58 +176,81 @@ export declare interface Player {
      * @eventProperty
      */
     on(event: 'end', listener: (reason: TrackEndEvent) => void): this;
+
     /**
      * Emitted when the current playing track gets stuck due to an error
      * @eventProperty
      */
     on(event: 'stuck', listener: (data: TrackStuckEvent) => void): this;
+
     /**
      * Emitted when the current websocket connection is closed
      * @eventProperty
      */
     on(event: 'closed', listener: (reason: WebSocketClosedEvent) => void): this;
+
     /**
      * Emitted when a new track starts
      * @eventProperty
      */
     on(event: 'start', listener: (data: TrackStartEvent) => void): this;
+
     /**
      * Emitted when there is an error caused by the current playing track
      * @eventProperty
      */
     on(event: 'exception', listener: (reason: TrackExceptionEvent) => void): this;
+
     /**
      * Emitted when the library manages to resume the player
      * @eventProperty
      */
     on(event: 'resumed', listener: (player: Player) => void): this;
+
     /**
      * Emitted when a playerUpdate event is received from Lavalink
      * @eventProperty
      */
     on(event: 'update', listener: (data: PlayerUpdate) => void): this;
+
     /**
      * Emitted when a playerRestore event received from Shoukaku
      * @eventProperty
      */
     on(event: 'restore', listener: (data: PlayerRestore) => void): this;
+
     once(event: 'end', listener: (reason: TrackEndEvent) => void): this;
+
     once(event: 'stuck', listener: (data: TrackStuckEvent) => void): this;
+
     once(event: 'closed', listener: (reason: WebSocketClosedEvent) => void): this;
+
     once(event: 'start', listener: (data: TrackStartEvent) => void): this;
+
     once(event: 'exception', listener: (reason: TrackExceptionEvent) => void): this;
+
     once(event: 'resumed', listener: (player: Player) => void): this;
+
     once(event: 'update', listener: (data: PlayerUpdate) => void): this;
+
     once(event: 'restore', listener: (data: PlayerRestore) => void): this;
+
     off(event: 'end', listener: (reason: TrackEndEvent) => void): this;
+
     off(event: 'stuck', listener: (data: TrackStuckEvent) => void): this;
+
     off(event: 'closed', listener: (reason: WebSocketClosedEvent) => void): this;
+
     off(event: 'start', listener: (data: TrackStartEvent) => void): this;
+
     off(event: 'exception', listener: (reason: TrackExceptionEvent) => void): this;
+
     off(event: 'resumed', listener: (player: Player) => void): this;
+
     off(event: 'update', listener: (data: PlayerUpdate) => void): this;
+
     off(event: 'restore', listener: (data: PlayerRestore) => void): this;
-};
+}
 
 /**
  * Wrapper object around Lavalink
@@ -228,7 +271,7 @@ export class Player extends EventEmitter {
     /**
      * Player info from Lavalink
      */
-    public info: any | null;
+    public info!: TrackInfo;
     /**
      * Global volume of the player
      */
@@ -249,6 +292,7 @@ export class Player extends EventEmitter {
      * Filters on current track
      */
     public filters: FilterOptions;
+
     /**
      * @param node An instance of Node (Lavalink API wrapper)
      * @param connection An instance of connection class
@@ -259,7 +303,6 @@ export class Player extends EventEmitter {
         this.node = node;
         this.track = null;
         this.volume = 100;
-        this.info = null;
         this.paused = false;
         this.position = 0;
         this.ping = 0;
@@ -330,12 +373,13 @@ export class Player extends EventEmitter {
         };
 
         if (playable.options) {
-            const { pause, startTime, endTime, volume } = playable.options;
+            const {pause, startTime, endTime, volume} = playable.options;
             if (pause) playerOptions.paused = pause;
             if (startTime) playerOptions.position = startTime;
             if (endTime) playerOptions.endTime = endTime;
             if (volume) playerOptions.volume = volume;
-        };
+        }
+        ;
 
         this.track = playable.track;
         this.info = playable.info;
@@ -359,7 +403,7 @@ export class Player extends EventEmitter {
 
         await this.node.rest.updatePlayer({
             guildId: this.guildId,
-            playerOptions: { encodedTrack: null, info: null }
+            playerOptions: {encodedTrack: null, info: null}
         });
     };
 
@@ -371,7 +415,7 @@ export class Player extends EventEmitter {
         this.paused = paused;
         await this.node.rest.updatePlayer({
             guildId: this.guildId,
-            playerOptions: { paused: true, info: this.info }
+            playerOptions: {paused: true, info: this.info}
         });
     };
 
@@ -383,7 +427,7 @@ export class Player extends EventEmitter {
         this.position = position;
         await this.node.rest.updatePlayer({
             guildId: this.guildId,
-            playerOptions: { position: position, info: this.info }
+            playerOptions: {position: position, info: this.info}
         });
     };
 
@@ -395,7 +439,7 @@ export class Player extends EventEmitter {
         this.volume = volume;
         await this.node.rest.updatePlayer({
             guildId: this.guildId,
-            playerOptions: { volume: this.volume, info: this.info }
+            playerOptions: {volume: this.volume, info: this.info}
         });
     };
 
@@ -407,6 +451,7 @@ export class Player extends EventEmitter {
         this.filters.volume = volume;
         await this.setFilters(this.filters);
     };
+
     /**
      * Change the equalizer settings applied to the currently playing track
      * @param equalizer An array of objects that conforms to the Bands type that define volumes at different frequencies
@@ -497,7 +542,7 @@ export class Player extends EventEmitter {
         this.filters = filters;
         await this.node.rest.updatePlayer({
             guildId: this.guildId,
-            playerOptions: { filters: filters, info: this.info }
+            playerOptions: {filters: filters, info: this.info}
         });
     };
 
@@ -538,7 +583,7 @@ export class Player extends EventEmitter {
      * If you want to update the whole player yourself, sends raw update player info to lavalink
      */
     public async update(updatePlayer: UpdatePlayerInfo): Promise<void> {
-        const data = { ...updatePlayer, ...{ guildId: this.guildId, sessionId: this.node.sessionId! } };
+        const data = {...updatePlayer, ...{guildId: this.guildId, sessionId: this.node.sessionId!}};
         await this.node.rest.updatePlayer(data);
 
         if (updatePlayer.playerOptions) {
@@ -549,7 +594,7 @@ export class Player extends EventEmitter {
             if (options.filters) this.filters = options.filters;
             if (options.volume) this.volume = options.volume;
             if (options.info) this.info = options.info;
-        };
+        }
     };
 
     /**
@@ -588,7 +633,7 @@ export class Player extends EventEmitter {
      * Handle player update data
      */
     public onPlayerUpdate(json: { state: { position: number, ping: number } }): void {
-        const { position, ping } = json.state;
+        const {position, ping} = json.state;
         this.position = position;
         this.ping = ping;
         this.emit('update', json);
@@ -619,6 +664,6 @@ export class Player extends EventEmitter {
                 break;
             default:
                 this.node.emit('debug', this.node.name, `[Player] -> [Node] : Unknown Player Event Type ${json.type} | Guild: ${this.guildId}`);
-        };
+        }
     };
-};
+}

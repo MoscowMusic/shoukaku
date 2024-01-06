@@ -5,7 +5,7 @@ import { NodeOption, Shoukaku } from '../Shoukaku';
 export interface ConnectorMethods {
     sendPacket: any;
     getId: any;
-};
+}
 
 export const AllowedPackets = ['VOICE_STATE_UPDATE', 'VOICE_SERVER_UPDATE'];
 
@@ -47,4 +47,4 @@ export abstract class Connector {
     abstract sendPacket(shardId: number, payload: any, important: boolean): void;
 
     abstract listen(nodes: NodeOption[]): void;
-};
+}

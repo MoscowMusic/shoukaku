@@ -9,22 +9,22 @@ export type Constructor<T> = new (...args: any[]) => T;
 export function mergeDefault<T extends { [key: string]: any }>(def: T, given: T): Required<T> {
     if (!given) return def as Required<T>;
     const defaultKeys: (keyof T)[] = Object.keys(def);
-    
+
     for (const key in given) {
         if (defaultKeys.includes(key)) continue;
         delete given[key];
-    };
+    }
 
     for (const key of defaultKeys) {
         if (def[key] === null || (typeof def[key] === 'string' && def[key].length === 0)) {
             if (!given[key]) throw new Error(`${String(key)} was not found from the given options.`);
-        };
+        }
 
         if (given[key] === null || given[key] === undefined) given[key] = def[key];
-    };
+    }
 
     return given as Required<T>;
-};
+}
 
 /**
  * Wait for a specific amount of time (timeout)
@@ -33,4 +33,4 @@ export function mergeDefault<T extends { [key: string]: any }>(def: T, given: T)
  */
 export function wait(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
-};
+}

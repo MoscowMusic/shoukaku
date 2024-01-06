@@ -17,4 +17,4 @@ export class Eris extends Connector {
         // Attach to the raw websocket event, this event must be 1:1 on spec with dapi (most libs implement this)
         this.client.on('rawWS', (packet: any) => this.raw(packet));
     };
-};
+}

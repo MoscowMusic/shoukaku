@@ -1,4 +1,3 @@
-import { Node } from '../node/Node';
 import { EventEmitter, once } from 'events';
 import { State, VoiceState } from '../Constants';
 import { Shoukaku, VoiceChannelOptions } from '../Shoukaku.js';
@@ -11,7 +10,7 @@ export interface StateUpdatePartial {
     session_id?: string;
     self_deaf: boolean;
     self_mute: boolean;
-};
+}
 
 /**
  * Represents the payload from a serverUpdate event
@@ -20,7 +19,7 @@ export interface ServerUpdate {
     token: string;
     guild_id: string;
     endpoint: string;
-};
+}
 
 /**
  * Represents a connection to a Discord voice channel
@@ -166,7 +165,7 @@ export class Connection extends EventEmitter {
             throw error;
         } finally {
             clearTimeout(timeout);
-        };
+        }
     };
 
     /**
@@ -209,7 +208,7 @@ export class Connection extends EventEmitter {
         if (!this.sessionId) {
             this.emit('connectionUpdate', VoiceState.SESSION_ID_MISSING);
             return;
-        };
+        }
 
         this.lastRegion = this.region?.repeat(1) || null;
         this.region = data.endpoint.split('.').shift()?.replace(/[0-9]/g, '') || null;
@@ -247,4 +246,4 @@ export class Connection extends EventEmitter {
     private debug(message: string): void {
         this.manager.emit('debug', this.constructor.name, message);
     };
-};
+}

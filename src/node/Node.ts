@@ -405,7 +405,6 @@ export class Node extends EventEmitter {
 
                 dump.options.restored = true;
             } catch (error) {
-                this.emit('debug', error)
                 this.emit('debug', `[Socket] <- [${this.name}/players/${dump.options.guildId}] : Couldn't restore player because session is expired or there are no suitable nodes available`);
 
                 this.emit('raw', {op: OpCodes.PLAYER_RESTORE, dump: dump});

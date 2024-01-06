@@ -89,17 +89,16 @@ export class PlayerListeners {
 
 ```TS
 // queue.session is a PlayerDump that we previously saved using this.shoukaku.playersDump.get(data.guildId).
-const QueueData = (await Database.getAllData("queue")).filter((queue: any) => queue.session);
+const queue = (await this.app.database.getAllData("queue", undefined, false)).filter((queue: any) => queue.session);
 
-// It doesn't matter how you store the session, but you need to convert them to [String, PlayerDump], where String = guildId
-const PreviousSessions = QueueData.map((queue: QueueModel) => [queue.guild, queue.session]);
-
-this.shoukaku = new Shoukaku(new Connectors.Eris(this.app.client), 
-    this.app.config.values.nodes, {
-        moveOnDisconnect: true,
-        resume: true
-    }, PreviousSessions
-);
+// you need to modify this part of the code, since I'm updating each player separetely from playerUpdate event and need to create an array of all sessions.
+const sessions = queue.map((queue: IQueue) => queue.session); // we need to get Array<PlayerDump> — u can save an array of all sessions using shoukaku.playersDump
+   
+// setup Shoukaku as usual, add the resume parameter and pass sessions.
+this.shoukaku = new Shoukaku(new Connectors.Eris(this.app.client), this.app.config.values.music.nodes, {
+    moveOnDisconnect: true,
+    resume: true
+}, PreviousSessions);
 ```
 <br/>
 
